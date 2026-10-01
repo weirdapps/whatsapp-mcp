@@ -1,0 +1,27 @@
+*.db
+*.db-*
+claude_desktop_config.json
+whatsapp.log
+
+# Compiled Go bridge binary (build artifact)
+# whatsapp-bridge: from `go build -o whatsapp-bridge .` (README install step)
+# whatsapp-client: default name from `go build .` / `go build ./...` (module name)
+whatsapp-bridge/whatsapp-bridge
+whatsapp-bridge/whatsapp-client
+
+# Secrets. A bare `.env` line does not cover `.env.bak-*`, `.env.local` or
+# `.env.production`, so ignore the whole family.
+.env
+.env.*
+# Credential-shaped files.
+*.pem
+*.key
+
+# Everything the bridge writes: both databases and their -wal/-shm/-journal
+# files, renamed backups such as whatsapp.db.expired-*, the API token, and
+# downloaded media under store/<chat>/.
+whatsapp-bridge/store/
+**/store/
+
+# LaunchAgent files generated from launchd/whatsapp-bridge.plist.template
+launchd/*.plist

@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "gomod"
+    directory: "/whatsapp-bridge"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # uv (not pip): the pip ecosystem updates pyproject.toml but leaves uv.lock
+  # stale; the uv ecosystem updates both together (uv GA 2025-03).
+  - package-ecosystem: "uv"
+    directory: "/whatsapp-mcp-server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    allow:
+      - dependency-type: "direct"

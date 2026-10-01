@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Minimal token scope. Nothing here writes anything; it checks out and runs
+# checks.
+permissions:
+  contents: read
+
+jobs:
+  go-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: whatsapp-bridge
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
+        with:
+          go-version-file: whatsapp-bridge/go.mod
+      - run: go build -v .
+      - run: go vet ./...
+      - run: go test ./...
+
+  python-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: whatsapp-mcp-server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+      - run: ruff format --check .
+
+  python-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: whatsapp-mcp-server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      # Pinned to the exact tag: setup-uv stopped publishing moving major tags
+      # after v7, so `@v9` does not resolve. Dependabot tracks exact tags fine.
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - run: uv run pytest -v

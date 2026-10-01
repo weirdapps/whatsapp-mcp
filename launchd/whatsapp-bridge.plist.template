@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The WhatsApp bridge as a macOS LaunchAgent, so it survives a closed terminal
+  and a reboot. Install: see "Run it in the background" in README.md, which
+  fills in __REPO_DIR__ and __HOME__.
+
+  Privacy, on purpose:
+  - StandardOutPath is /dev/null. The bridge prints the sender and text of every
+    message it stores, and a launchd log would keep that in plain text.
+  - StandardErrorPath gets crashes only; create it 0600 before the first load.
+  - Umask 63 (octal 077): databases, their journals and downloaded media are
+    created owner-only.
+  - The REST API binds 127.0.0.1 and requires the token in store/api_token.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>local.whatsapp-mcp.bridge</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>__REPO_DIR__/whatsapp-bridge/whatsapp-bridge</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>__REPO_DIR__/whatsapp-bridge</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>__HOME__</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>30</integer>
+	<key>Umask</key>
+	<integer>63</integer>
+	<key>StandardOutPath</key>
+	<string>/dev/null</string>
+	<key>StandardErrorPath</key>
+	<string>__HOME__/Library/Logs/whatsapp-bridge.err</string>
+</dict>
+</plist>
