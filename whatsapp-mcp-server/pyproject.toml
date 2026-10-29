@@ -25,5 +25,5 @@ ignore = ["E501", "B904", "F841", "UP022", "W291", "W293"]
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
+    "pytest-asyncio>=1.4.1",
 ]
