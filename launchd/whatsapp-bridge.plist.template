@@ -29,6 +29,11 @@
 		<string>__HOME__</string>
 		<key>PATH</key>
 		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<!-- Nobody sees a QR code printed here. Unpaired, the bridge waits and
+		     reports needs_pairing on /api/health instead of restarting every
+		     3 minutes. -->
+		<key>WHATSAPP_BRIDGE_NO_QR</key>
+		<string>1</string>
 	</dict>
 	<key>RunAtLoad</key>
 	<true/>

@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -688,12 +689,21 @@ func extractDirectPathFromURL(url string) string {
 }
 
 // Start a REST API server to expose the WhatsApp client functionality
-func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port int) {
+func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port int) error {
 	token, err := loadOrCreateAPIToken(apiTokenFile)
 	if err != nil {
-		fmt.Printf("REST API not started: cannot read or create %s: %v\n", apiTokenFile, err)
-		return
+		return fmt.Errorf("cannot read or create %s: %w", apiTokenFile, err)
 	}
+
+	http.HandleFunc("/api/health", requireLocalClient(token, port, healthHandler(func() healthReport {
+		rep := healthReport{
+			Paired:    client.Store.ID != nil,
+			Connected: client.IsConnected(),
+			LoggedIn:  client.IsLoggedIn(),
+		}
+		rep.State = healthState(rep.Paired, loggedOutThisRun.Load(), rep.Connected, rep.LoggedIn)
+		return rep
+	})))
 
 	// Handler for sending messages
 	http.HandleFunc("/api/send", requireLocalClient(token, port, func(w http.ResponseWriter, r *http.Request) {
@@ -799,12 +809,19 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 	serverAddr := fmt.Sprintf("127.0.0.1:%d", port)
 	fmt.Printf("Starting REST API server on %s...\n", serverAddr)
 
-	// Run server in a goroutine so it doesn't block
+	// Bind before returning, so a port held by another bridge copy is an error the
+	// caller exits on, not a bridge that runs on with no API at all.
+	ln, err := net.Listen("tcp", serverAddr)
+	if err != nil {
+		return err
+	}
 	go func() {
-		if err := http.ListenAndServe(serverAddr, nil); err != nil {
-			fmt.Printf("REST API server error: %v\n", err)
+		if err := http.Serve(ln, nil); err != nil {
+			logState("REST API server stopped: %v", err)
+			os.Exit(1)
 		}
 	}()
+	return nil
 }
 
 func main() {
@@ -873,17 +890,34 @@ func main() {
 
 		case *events.Connected:
 			logger.Infof("Connected to WhatsApp")
+			logState("connected")
+
+		case *events.Disconnected:
+			logState("disconnected, whatsmeow will reconnect")
 
 		case *events.LoggedOut:
+			loggedOutThisRun.Store(true)
 			logger.Warnf("Device logged out, please scan QR code to log in again")
+			logState("logged out by WhatsApp: the device must be paired again")
 		}
 	})
+
+	// Serve the API before connecting, so /api/health can report a bridge that is
+	// waiting to be paired or failing to connect.
+	if err := startRESTServer(client, messageStore, 8080); err != nil {
+		logState("REST API not started: %v", err)
+		os.Exit(1)
+	}
 
 	// Create channel to track connection success
 	connected := make(chan bool, 1)
 
 	// Connect to WhatsApp
-	if client.Store.ID == nil {
+	if client.Store.ID == nil && os.Getenv(noQREnv) != "" {
+		// Nobody can scan a QR code printed by a supervised service. Wait, and let
+		// /api/health say needs_pairing, instead of timing out into a restart loop.
+		logState("no linked device and %s is set: waiting; pair by running the bridge in a terminal", noQREnv)
+	} else if client.Store.ID == nil {
 		// No ID stored, this is a new client, need to pair with phone
 		qrChan, _ := client.GetQRChannel(context.Background())
 		err = client.Connect()
@@ -921,18 +955,18 @@ func main() {
 		connected <- true
 	}
 
-	// Wait a moment for connection to stabilize
-	time.Sleep(2 * time.Second)
+	if client.Store.ID != nil {
+		// Wait a moment for connection to stabilize
+		time.Sleep(2 * time.Second)
 
-	if !client.IsConnected() {
-		logger.Errorf("Failed to establish stable connection")
-		return
+		if !client.IsConnected() {
+			logger.Errorf("Failed to establish stable connection")
+			logState("no stable connection to WhatsApp, exiting")
+			return
+		}
+
+		fmt.Println("\n✓ Connected to WhatsApp! Type 'help' for commands.")
 	}
-
-	fmt.Println("\n✓ Connected to WhatsApp! Type 'help' for commands.")
-
-	// Start REST API server
-	startRESTServer(client, messageStore, 8080)
 
 	// Create a channel to keep the main goroutine alive
 	exitChan := make(chan os.Signal, 1)

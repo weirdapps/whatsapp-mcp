@@ -12,7 +12,8 @@ This is the `weirdapps/whatsapp-mcp` fork of `lharries/whatsapp-mcp`, ahead of u
 - `github.com/mattn/go-sqlite3` (CGO-dependent SQLite driver)
 - `github.com/mdp/qrterminal` for the pairing QR code
 - `google.golang.org/protobuf`
-- Exposes REST API on `http://localhost:8080/api` (send + download endpoints)
+- Exposes REST API on `http://localhost:8080/api` (send, download, and `GET /api/health`: 200 only when connected to WhatsApp, else 503 with `state`); `health.go`
+- `WHATSAPP_BRIDGE_NO_QR=1` (set by the LaunchAgent template): an unpaired bridge waits and reports `needs_pairing` instead of printing a QR code and exiting after 3 minutes
 
 **Python MCP server** (`whatsapp-mcp-server/`)
 - `pyproject.toml` requires `python>=3.11`; `.python-version` pins 3.11; CI runs on 3.12
@@ -54,7 +55,7 @@ First run: QR code displayed in terminal; scan with WhatsApp mobile to pair. Ses
 
 ```bash
 cd whatsapp-mcp-server && uv run pytest -v   # 12 tests
-cd whatsapp-bridge && go test ./...          # API guard, name cleaning, send allowlist, token
+cd whatsapp-bridge && go test ./...          # API guard, name cleaning, send allowlist, token, health state
 ```
 
 The Python suite lives in `whatsapp-mcp-server/tests/test_mcp_server.py` and targets the MCP surface: the server object is a v2 `MCPServer`, all 12 tools register, input schemas are still derived from type hints (optionals, defaults, required lists), a `call_tool` round trip works against an in-memory `Client`, `audio.py` rejects a missing input file, each read tool returns output that validates against its declared schema (the dataclass-serialisation regressions below), and bridge calls carry the API token. It needs no running bridge and no `messages.db`: the data layer is patched with `unittest.mock.patch.object(main, "whatsapp_*")`. The Go tests (`whatsapp-bridge/security_test.go`) cover `requireLocalClient`, `safeMediaName`, `resolveSendPath` and token creation.
