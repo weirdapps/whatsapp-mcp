@@ -9,7 +9,6 @@ import (
 	"math"
 	"math/rand"
 	"mime"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -695,15 +694,7 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		return fmt.Errorf("cannot read or create %s: %w", apiTokenFile, err)
 	}
 
-	http.HandleFunc("/api/health", requireLocalClient(token, port, healthHandler(func() healthReport {
-		rep := healthReport{
-			Paired:    client.Store.ID != nil,
-			Connected: client.IsConnected(),
-			LoggedIn:  client.IsLoggedIn(),
-		}
-		rep.State = healthState(rep.Paired, loggedOutThisRun.Load(), rep.Connected, rep.LoggedIn)
-		return rep
-	})))
+	http.HandleFunc("/api/health", requireLocalClient(token, port, healthHandler(clientHealth(client))))
 
 	// Handler for sending messages
 	http.HandleFunc("/api/send", requireLocalClient(token, port, func(w http.ResponseWriter, r *http.Request) {
@@ -809,19 +800,7 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 	serverAddr := fmt.Sprintf("127.0.0.1:%d", port)
 	fmt.Printf("Starting REST API server on %s...\n", serverAddr)
 
-	// Bind before returning, so a port held by another bridge copy is an error the
-	// caller exits on, not a bridge that runs on with no API at all.
-	ln, err := net.Listen("tcp", serverAddr)
-	if err != nil {
-		return err
-	}
-	go func() {
-		if err := http.Serve(ln, nil); err != nil {
-			logState("REST API server stopped: %v", err)
-			os.Exit(1)
-		}
-	}()
-	return nil
+	return serveAPI(serverAddr)
 }
 
 func main() {

@@ -3,10 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"sync/atomic"
 	"time"
+
+	"go.mau.fi/whatsmeow"
 )
 
 // A running process is not a working bridge. When WhatsApp unlinks the device,
@@ -44,6 +47,35 @@ func healthState(paired, loggedOut, connected, loggedIn bool) string {
 	default:
 		return "connected"
 	}
+}
+
+// clientHealth reads the live client's state for healthHandler.
+func clientHealth(client *whatsmeow.Client) func() healthReport {
+	return func() healthReport {
+		rep := healthReport{
+			Paired:    client.Store.ID != nil,
+			Connected: client.IsConnected(),
+			LoggedIn:  client.IsLoggedIn(),
+		}
+		rep.State = healthState(rep.Paired, loggedOutThisRun.Load(), rep.Connected, rep.LoggedIn)
+		return rep
+	}
+}
+
+// serveAPI binds before returning, so a port held by another bridge copy is an
+// error the caller exits on, not a bridge that runs on with no API at all.
+func serveAPI(addr string) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	go func() {
+		if err := http.Serve(ln, nil); err != nil {
+			logState("REST API server stopped: %v", err)
+			os.Exit(1)
+		}
+	}()
+	return nil
 }
 
 // healthHandler serves GET /api/health: 200 when connected, 503 otherwise, with

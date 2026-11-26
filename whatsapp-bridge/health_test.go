@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -56,5 +57,16 @@ func TestHealthHandler(t *testing.T) {
 	h(w, httptest.NewRequest(http.MethodPost, "/api/health", nil))
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST: status %d, want 405", w.Code)
+	}
+}
+
+func TestServeAPIRefusesTakenPort(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	if err := serveAPI(ln.Addr().String()); err == nil {
+		t.Fatal("serveAPI on a taken port returned nil, want an error")
 	}
 }
