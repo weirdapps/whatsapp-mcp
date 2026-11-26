@@ -97,7 +97,22 @@ sed -e "s#__REPO_DIR__#$(pwd)#g" -e "s#__HOME__#$HOME#g" launchd/whatsapp-bridge
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.whatsapp-mcp.bridge.plist
 ```
 
-The agent discards stdout, because the bridge prints the sender and text of every message it stores. Only crashes reach `~/Library/Logs/whatsapp-bridge.err`. Its umask makes everything the bridge creates owner-only.
+The agent discards stdout, because the bridge prints the sender and text of every message it stores. Only crashes and one line per connection change (connected, disconnected, logged out) reach `~/Library/Logs/whatsapp-bridge.err`. Its umask makes everything the bridge creates owner-only.
+
+The template sets `WHATSAPP_BRIDGE_NO_QR=1`. Without it, a bridge whose device WhatsApp has unlinked prints a QR code nobody sees, gives up after 3 minutes and is restarted by launchd, forever. With it, the bridge keeps running and reports `needs_pairing` on its health endpoint.
+
+#### Is it working? `GET /api/health`
+
+A running process is not a working bridge. Ask the bridge itself (same token and JSON header as every other endpoint):
+
+```bash
+curl -s -H "Content-Type: application/json" \
+  -H "X-Bridge-Token: $(cat whatsapp-bridge/store/api_token)" \
+  http://127.0.0.1:8080/api/health
+# {"state":"connected","paired":true,"connected":true,"logged_in":true}
+```
+
+HTTP 200 only when `state` is `connected`; otherwise 503 with one of `connecting`, `disconnected` (whatsmeow is reconnecting), `needs_pairing` or `logged_out` (pair again). A monitor should alert on a 503 or on no answer, not on whether the process exists. The API now starts before the WhatsApp connection, and the bridge exits if port 8080 is already taken, so a second copy cannot run on without an API.
 
 To re-pair, stop the agent, pair in a terminal, then start the agent again:
 
@@ -208,7 +223,7 @@ The Go tests ([`whatsapp-bridge/security_test.go`](whatsapp-bridge/security_test
 - **Force re-pairing**: stop the bridge, delete both `whatsapp-bridge/store/whatsapp.db` and `whatsapp-bridge/store/messages.db`, restart. A fresh QR code appears.
 - **Device limit reached**: WhatsApp caps linked devices per account; remove an old one from the phone under Linked Devices.
 - **No messages loading**: initial history sync can take several minutes on large accounts.
-- **Bridge unreachable**: confirm `curl -sS http://localhost:8080/api/send -X POST -d '{}'` returns `Unsupported Media Type` or `Unauthorized` (proves the port is bound; the API requires JSON and the token). If nothing answers, the Go process isn't running.
+- **Bridge unreachable**: query `/api/health` (see above). `needs_pairing` or `logged_out` means pair again; no answer means the Go process isn't running, or exited because another copy holds port 8080 (`lsof -nP -iTCP:8080`).
 - **HTTP 401 from the bridge**: the caller did not send `X-Bridge-Token`. The MCP server reads it from `whatsapp-bridge/store/api_token`; restart Claude sessions started before the token existed.
 
 For MCP client troubleshooting, see the [Model Context Protocol quickstart](https://modelcontextprotocol.io/quickstart/server#claude-for-desktop-integration-issues).
